@@ -1,3 +1,7 @@
+#tree 
+tree.txt
+tree5.txt
+
 # OpenAI API key
 openai_config.json
 reverie/backend_server/utils.py
