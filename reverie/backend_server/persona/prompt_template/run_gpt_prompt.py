@@ -14,7 +14,7 @@ from .common import openai_config
 
 # Re-export LLM call functions
 from .safety.anthromorphosization_v1 import run_gpt_generate_safety_score  # noqa: F401
-from .v1.action_location_object_vMar11 import run_gpt_prompt_action_arena  # noqa: F401
+from .v1.action_location_arena_vMar11 import run_gpt_prompt_action_arena  # noqa: F401
 from .v1.action_location_sector_v1 import run_gpt_prompt_action_sector  # noqa: F401
 from .v1.action_object_v2 import run_gpt_prompt_action_game_object  # noqa: F401
 from .v2.daily_planning_v6 import run_gpt_prompt_daily_plan  # noqa: F401
@@ -29,6 +29,7 @@ from .v2.generate_next_convo_line_v1 import run_gpt_prompt_generate_next_convo_l
 from .v2.insight_and_evidence_v1 import run_gpt_prompt_insight_and_guidance  # noqa: F401
 from .v2.new_decomp_schedule_v1 import run_gpt_prompt_new_decomp_schedule  # noqa: F401
 from .v2.planning_thought_on_convo_v1 import run_gpt_prompt_planning_thought_on_convo  # noqa: F401
+from .v2.prioritized_event_reaction import run_gpt_prompt_prioritized_event_reaction  # noqa: F401
 from .v2.task_decomp_v3 import run_gpt_prompt_task_decomp  # noqa: F401
 from .v2.wake_up_hour_v1 import run_gpt_prompt_wake_up_hour  # noqa: F401
 from .v2.whisper_inner_thought_v1 import run_gpt_prompt_generate_whisper_inner_thought  # noqa: F401

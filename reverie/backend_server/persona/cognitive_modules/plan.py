@@ -6,7 +6,8 @@ Description: This defines the "Plan" module for generative agents.
 """
 import datetime
 import math
-import random 
+import random
+import traceback
 
 import sys
 sys.path.append('../../')
@@ -27,6 +28,7 @@ from persona.prompt_template.run_gpt_prompt import (
     run_gpt_prompt_decide_to_talk,
     run_gpt_prompt_decide_to_react,
     run_gpt_prompt_summarize_conversation,
+    run_gpt_prompt_prioritized_event_reaction
 )
 from persona.prompt_template.gpt_structure import ChatGPT_single_request, get_embedding
 from persona.cognitive_modules.retrieve import new_retrieve
@@ -109,7 +111,7 @@ def generate_hourly_schedule(persona, wake_up_hour):
   if debug:
     print("GNS FUNCTION: <generate_hourly_schedule>")
 
-  hour_str = [
+  hour_strings = [
     "00:00 AM",
     "01:00 AM",
     "02:00 AM",
@@ -149,15 +151,15 @@ def generate_hourly_schedule(persona, wake_up_hour):
     if len(n_m1_activity_set) < 5:
       n_m1_activity = []
 
-      if not all_in_one:
-        for count, curr_hour_str in enumerate(hour_str):
-          n_m1_activity += [run_gpt_prompt_generate_hourly_schedule(
-            persona, curr_hour_str, n_m1_activity, hour_str, all_in_one=False
-          )[0]]
-      else:
+      if all_in_one:
         n_m1_activity = run_gpt_prompt_generate_hourly_schedule(
-          persona, hour_str, n_m1_activity, hour_str, all_in_one=True
+          persona, n_m1_activity, hour_strings, all_in_one=True
         )[0]
+      else:
+        for _i in range(len(hour_strings)):
+          n_m1_activity += [run_gpt_prompt_generate_hourly_schedule(
+            persona, n_m1_activity, hour_strings, all_in_one=False
+          )[0]]
 
   # Step 1. Compressing the hourly schedule to the following format:
   # The integer indicates the number of hours. They should add up to 24.
@@ -251,7 +253,7 @@ def generate_action_arena(act_desp, persona, maze, act_world, act_sector):
   """
   if debug:
     print("GNS FUNCTION: <generate_action_arena>")
-  return run_gpt_prompt_action_arena(act_desp, persona, maze, act_world, act_sector)[
+  return run_gpt_prompt_action_arena(act_desp, persona, act_world, act_sector)[
     0
   ]
 
@@ -279,7 +281,7 @@ def generate_action_game_object(act_desp, act_address, persona, maze):
     print("ERROR: act_address not valid. Returning '<random>' as game object.")
     print("act_address:", act_address)
     return "<random>"
-  return run_gpt_prompt_action_game_object(act_desp, persona, maze, act_address)[0]
+  return run_gpt_prompt_action_game_object(act_desp, persona, act_address)[0]
 
 
 def generate_action_pronunciatio(act_desp, persona):
@@ -302,13 +304,14 @@ def generate_action_pronunciatio(act_desp, persona):
   try:
     response = run_gpt_prompt_pronunciatio(act_desp, persona)
     if response:
-      x = response[0]
-  except:
-    x = "🙂"
+      emoji = response[0]
+  except Exception:
+    traceback.print_exc()
+    emoji = "🙂"
 
-  if not x:
-    return "🙂"
-  return x
+  if emoji:
+    return emoji
+  return "🙂"
 
 
 def generate_action_event_triple(act_desp, persona):
@@ -374,7 +377,7 @@ def generate_convo_summary(persona, convo):
     convo_summary = response[0]
     return convo_summary
   else:
-    print("ERROR: <generate_convo_summary>")
+    print("ERROR <generate_convo_summary>: Failed to generate convo summary.")
     return ""
 
 
@@ -396,11 +399,10 @@ def generate_decide_to_react(init_persona, target_persona, retrieved):
 
 def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start_hour, end_hour): 
   # Step 1: Setting up the core variables for the function. 
-  # <p> is the persona whose schedule we are editing right now. 
-  p = persona
+
   # <today_min_pass> indicates the number of minutes that have passed today. 
-  today_min_pass = (int(p.scratch.curr_time.hour) * 60 
-                    + int(p.scratch.curr_time.minute) + 1)
+  today_min_pass = (int(persona.scratch.curr_time.hour) * 60 
+                    + int(persona.scratch.curr_time.minute) + 1)
   
   # Step 2: We need to create <main_act_dur> and <truncated_act_dur>. 
   # These are basically a sub-component of <f_daily_schedule> of the persona,
@@ -434,8 +436,7 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
   count = 0 # enumerate count
   truncated_fin = False 
 
-  print ("DEBUG::: ", persona.scratch.name)
-  for act, dur in p.scratch.f_daily_schedule: 
+  for act, dur in persona.scratch.f_daily_schedule:
     if (dur_sum >= start_hour * 60) and (dur_sum < end_hour * 60): 
       main_act_dur += [[act, dur]]
       if dur_sum <= today_min_pass:
@@ -443,24 +444,20 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
       elif dur_sum > today_min_pass and not truncated_fin: 
         # We need to insert that last act, duration list like this one: 
         # e.g., ['wakes up and completes her morning routine (wakes up...)', 2]
-        truncated_act_dur += [[p.scratch.f_daily_schedule[count][0], 
+        truncated_act_dur += [[persona.scratch.f_daily_schedule[count][0], 
                                dur_sum - today_min_pass]] 
         truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
         # truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass + 1) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
-        print ("DEBUG::: ", truncated_act_dur)
 
         # truncated_act_dur[-1][-1] -= (dur_sum - today_min_pass) ######## DEC 7 DEBUG;.. is the +1 the right thing to do??? 
         truncated_fin = True
     dur_sum += dur
     count += 1
 
-  persona_name = persona.name 
-  main_act_dur = main_act_dur
-
   x = truncated_act_dur[-1][0].split("(")[0].strip() + " (on the way to " + truncated_act_dur[-1][0].split("(")[-1][:-1] + ")"
-  truncated_act_dur[-1][0] = x 
+  truncated_act_dur[-1][0] = x
 
-  if "(" in truncated_act_dur[-1][0]: 
+  if "(" in truncated_act_dur[-1][0]:
     inserted_act = truncated_act_dur[-1][0].split("(")[0].strip() + " (" + inserted_act + ")"
 
   # To do inserted_act_dur+1 below is an important decision but I'm not sure
@@ -472,14 +469,18 @@ def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start
   end_time_hour = (datetime.datetime(2022, 10, 31, 0, 0) 
                    + datetime.timedelta(hours=end_hour))
 
-  if debug: print ("GNS FUNCTION: <generate_new_decomp_schedule>")
-  return run_gpt_prompt_new_decomp_schedule(persona, 
-                                            main_act_dur, 
-                                            truncated_act_dur, 
-                                            start_time_hour,
-                                            end_time_hour,
-                                            inserted_act,
-                                            inserted_act_dur)[0]
+  if debug:
+    print ("GNS FUNCTION: <generate_new_decomp_schedule>")
+
+  return run_gpt_prompt_new_decomp_schedule(
+    persona,
+    main_act_dur,
+    truncated_act_dur,
+    start_time_hour,
+    end_time_hour,
+    inserted_act,
+    inserted_act_dur
+  )[0]
 
 
 ##############################################################################
@@ -538,6 +539,92 @@ def revise_identity(persona):
   print ("DEBUG new_daily_req:", new_daily_req)
   persona.scratch.daily_plan_req = new_daily_req
 
+def generate_prioritized_event_reaction(persona, priority):
+  """
+  Given the persona and the potential events to prioritize, call GPT to determine 
+  urgency scores for each event (0-10). Add on .1*importance/poignancy score to act as a tie-breaker,
+  and then order events in descending order. Return the list of prioritized events.
+
+  INPUT:
+    persona: The Persona class instance
+    priority: list of dictionaries containing keys curr_event (Concept node), 
+      events (list of event concept nodes related to the curr_event), thoughts 
+      (list of thought concept nodes that are related)
+  OUTPUT:
+    dict: A reordered list of INPUT dictionaries where first is the most pertinent event to react to, 
+    and it is followed by the less important events
+  EXAMPLE OUTPUT:
+    "[{curr_event: nodeA, events: [nodeB, nodeC,...], thoughts: [nodeD, nodeE,...]},...]"
+  """
+  # Only look at the curr_events part for simplicity
+  curr_events = [item["curr_event"] for item in priority]
+
+  # First, build out priority scores based on GPT function call
+  if debug:
+    print("GNS FUNCTION: <generate_prioritized_event_reaction>")
+  priorities = dict()
+  for node in curr_events:
+    priorities[node.node_id] = run_gpt_prompt_prioritized_event_reaction(persona, node)[
+      0
+    ]
+  if debug:
+    print("DEBUG------Priorities collected------")
+  # Second, extract poignancy scores to act as importance scores (essentially a tie-breaker)
+  importance_out = dict()
+  for count, node in enumerate(curr_events):
+    if isinstance(node.poignancy, int):
+      importance_out[node.node_id] = node.poignancy
+    else:
+      importance_out[node.node_id] = 4
+
+  # Importance weight is used to weight the importance_out of a node much lower than the most recent
+  # GPT call to determine urgency, and it essentially acts as a tiebreaker if there is a tie
+  importance_weight = 0.1
+  # Third, combine to create urgency scores
+  urgency_score = {
+    node_id: importance_weight * float(importance_out.get(node_id, 0))
+    + float(priorities.get(node_id, 0))
+    for node_id in set(importance_out) | set(priorities)
+  }
+  # Use these urgency scores to build an ordered list of output with more urgent events to react to first
+  urgency_scored_dict = {}
+  for event in priority:
+    node_id = event["curr_event"].node_id
+    urgency_scored_dict[node_id] = {
+      "data": event,
+      "urgency_score": urgency_score.get(node_id, 0),
+    }
+  # Print statements for debugging
+  if debug:
+    print("-------DEBUG Prioritize Events--------")
+    for key, value in urgency_scored_dict.items():
+      print(
+        f"Curr_event:{value['data']['curr_event'].spo_summary()}; Urgency Score: {value['urgency_score']}"
+      )
+    print("-------End of DEBUG Priotize Events------")
+
+  # urgency sorting function
+  def urgency_sort_key(event):
+    node_id = event[
+      "curr_event"
+    ].node_id  # get the node_id for the given event for indexing purposes
+    return (
+      urgency_scored_dict[node_id][
+        "urgency_score"
+      ],  # order by urgency score with a random tiebreaker
+      random.uniform(0, 1),  # Tie-breaker
+    )
+
+  # higher urgency scores listed first with a random tie breaker (if the urgency value and weighted importance_out are still equal)
+  sorted_list = sorted(
+    [value["data"] for value in urgency_scored_dict.values()],
+    key=urgency_sort_key,
+    reverse=True,
+  )
+  if debug:
+    # Print out the events for debugging to see data structures and sorted event list
+    print(f"Sorted List output for gen_prioritized_reaction: {sorted_list}")
+  return sorted_list
 
 def _long_term_planning(persona, new_day): 
   """
@@ -766,16 +853,22 @@ def _choose_retrieved(persona, retrieved):
     if (":" not in curr_event.subject 
         and curr_event.subject != persona.name): 
       priority += [rel_ctx]
-  if priority: 
-    return random.choice(priority)
+
+  if priority and len(priority) > 1:
+    return generate_prioritized_event_reaction(persona, priority)[0] 
+  elif priority and len(priority) == 1:
+    return priority[0]
 
   # Skip idle. 
   for event_desc, rel_ctx in retrieved.items(): 
     curr_event = rel_ctx["curr_event"]
     if "is idle" not in event_desc: 
       priority += [rel_ctx]
-  if priority: 
-    return random.choice(priority)
+
+  if priority and len(priority) > 1:
+    return generate_prioritized_event_reaction(persona, priority)[0]
+  elif priority and len(priority) == 1:
+    return priority[0]
   return None
 
 
@@ -947,7 +1040,7 @@ def _chat_react(maze, persona, focused_event, reaction_mode, personas):
   target_persona = personas[reaction_mode[9:].strip()]
   # curr_personas = [init_persona, target_persona]
 
-  # Actually creating the conversation here. 
+  # Actually creating the conversation here.
   convo, duration_min = generate_convo(maze, init_persona, target_persona)
   convo_summary = generate_convo_summary(init_persona, convo)
   inserted_act = convo_summary
@@ -1051,7 +1144,8 @@ def plan(persona, maze, personas, new_day, retrieved):
   #                     ["events"] = [<ConceptNode>, ...], 
   #                     ["thoughts"] = [<ConceptNode>, ...]}
   focused_event = False
-  if retrieved.keys(): 
+  if retrieved.keys():
+     # Will later add more logic to consider multiple events
     focused_event = _choose_retrieved(persona, retrieved)
   
   # Step 2: Once we choose an event, we need to determine whether the
